@@ -1,36 +1,82 @@
-import pandas as pd
-from sklearn.preprocessing import LabelEncoder
-from sklearn.naive_bayes import GaussianNB
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
+import csv
+import random
+import math
 
-data = pd.read_csv('Lab6.csv')
-print(data.head())
+def loadcsv(filename):
+    lines=csv.reader(open(filename,"r"))
+    dataset = list(lines)
+    for i in range(len(dataset)):
+        dataset[i] = [float(x) for x in dataset[i]]
+    return dataset
 
-X = data.iloc[:, :-1]
-y = data.iloc[:, -1]
+def splitDataset(dataset, splitRatio):
+    trainSize = int(len(dataset) * splitRatio)
+    trainSet = []
+    trainSet,testSet = dataset[:trainSize],dataset[trainSize:]
+    return [trainSet, testSet]
 
-le_outlook = LabelEncoder()
-X.loc[:, 'Outlook'] = le_outlook.fit_transform(X['Outlook'])
+def mean(numbers):
+    return sum(numbers)/(len(numbers))
 
-le_Temperature = LabelEncoder()
-X.loc[:, 'Temperature'] = le_Temperature.fit_transform(X['Temperature'])
+def stdev(numbers):
+    avg = mean(numbers)
+    v = 0
+    for x in numbers:
+        v += (x-avg)**2
+    return math.sqrt(v/(len(numbers)-1))
 
-le_Humidity = LabelEncoder()
-X.loc[:, 'Humidity'] = le_Humidity.fit_transform(X['Humidity'])
+def summarizeByClass(dataset):
+    separated = {}
+    for i in range(len(dataset)):
+        vector = dataset[i]
+        if (vector[-1] not in separated):
+            separated[vector[-1]] = []
+        separated[vector[-1]].append(vector)
+    summaries = {}
+    for classValue, instances in separated.items():
+        summaries[classValue] = [(mean(attribute), stdev(attribute)) for attribute in zip(*instances)][:-1]
+    return summaries
 
-le_Windy = LabelEncoder()
-X.loc[:, 'Windy'] = le_Windy.fit_transform(X['Windy'])
+def calculateProbability(x, mean, stdev):
+    exponent = math.exp((-(x - mean)**2) / (2 * stdev**2))
+    return (1 / ((2*math.pi)**(1/2)*stdev)) * exponent
 
-print(X.head())
+def predict(summaries, inputVector):
+    probabilities = {}
+    for classValue, classSummaries in summaries.items():
+        probabilities[classValue] = 1
+        for i in range(len(classSummaries)):
+            mean, stdev = classSummaries[i]
+            x = inputVector[i]
+            probabilities[classValue] *= calculateProbability(x, mean, stdev)
+            bestLabel, bestProb = None, -1
+            for classValue, probability in probabilities.items():
+                if bestLabel is None or probability > bestProb:
+                    bestProb = probability
+                    bestLabel = classValue
+    return bestLabel
 
-le_PlayTennis = LabelEncoder()
-y = le_PlayTennis.fit_transform(y)
-print(y)
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20)
+def getPredictions(summaries, testSet):
+    predictions = []
+    for i in range(len(testSet)):
+        result = predict(summaries, testSet[i])
+        predictions.append(result)
+    return predictions
 
-classifier = GaussianNB()
-classifier.fit(X_train, y_train)
+def getAccuracy(testSet, predictions):
+    correct = 0
+    for i in range(len(testSet)):
+        if testSet[i][-1] == predictions[i]:
+            correct += 1
+    return (correct/(len(testSet))) * 100.0
 
-print("Accuracy is:", accuracy_score(classifier.predict(X_test), y_test))
+filename = 'pima-indians-diabetes.csv'
+splitRatio = 0.67
+dataset = loadcsv(filename)
+trainingSet, testSet = splitDataset(dataset, splitRatio)
+summaries = summarizeByClass(trainingSet)
+predictions = getPredictions(summaries, testSet)
+print("\nPredictions:\n",predictions)
+accuracy = getAccuracy(testSet, predictions)
+print("Accuracy",accuracy)
